@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 3D Animator — Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  /* ─── RESET & BASE ───────────────────────────────────────────── */
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg: #050508;
+    --bg2: #0a0a10;
+    --surface: #11111a;
+    --primary: #7c3aed;
+    --primary-glow: #a855f7;
+    --accent: #f59e0b;
+    --accent2: #06b6d4;
+    --text: #f0eef8;
+    --muted: #7b7a8e;
+    --border: rgba(124,58,237,0.25);
+    --font-display: 'Bebas Neue', sans-serif;
+    --font-body: 'Space Grotesk', sans-serif;
+    --font-head: 'Syne', sans-serif;
+  }
+  html { scroll-behavior: smooth; overflow-x: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    cursor: none;
+    overflow-x: hidden;
+  }
+  ::selection { background: var(--primary); color: #fff; }
+
+  /* ─── CUSTOM CURSOR ──────────────────────────────────────────── */
+  #cursor-dot {
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    position: fixed; top:0; left:0; z-index:9999;
+    pointer-events:none;
+    transform: translate(-50%,-50%);
+    transition: width 0.2s, height 0.2s, background 0.2s;
+  }
+  #cursor-ring {
+    width: 36px; height: 36px;
+    border: 1.5px solid var(--primary-glow);
+    border-radius: 50%;
+    position: fixed; top:0; left:0; z-index:9998;
+    pointer-events:none;
+    transform: translate(-50%,-50%);
+    transition: width 0.35s cubic-bezier(.25,.46,.45,.94),
+                height 0.35s cubic-bezier(.25,.46,.45,.94),
+                border-color 0.2s, background 0.2s;
+  }
+  body.cursor-hover #cursor-dot { width:12px; height:12px; background: var(--primary-glow); }
+  body.cursor-hover #cursor-ring {
+    width:60px; height:60px;
+    border-color: var(--accent);
+    background: rgba(124,58,237,0.08);
+  }
+  body.cursor-click #cursor-dot { transform: translate(-50%,-50%) scale(0.5); }
+  body.cursor-click #cursor-ring { transform: translate(-50%,-50%) scale(0.85); }
+
+  /* ─── NOISE OVERLAY ──────────────────────────────────────────── */
+  body::before {
+    content:'';
+    position:fixed; inset:0; z-index:9997; pointer-events:none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+    opacity: 0.028;
+  }
+
+  /* ─── SCROLLBAR ──────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+
+  /* ─── LOADING SCREEN ─────────────────────────────────────────── */
+  #loader {
+    position: fixed; inset:0; background: var(--bg); z-index:10000;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    transition: opacity 0.8s ease, visibility 0.8s ease;
+  }
+  #loader.hide { opacity:0; visibility:hidden; }
+  .loader-bar-wrap {
+    width: 220px; height: 2px; background: rgba(255,255,255,0.06);
+    border-radius: 2px; overflow: hidden; margin-top: 24px;
+  }
+  .loader-bar {
+    height:100%; width:0; background: linear-gradient(90deg, var(--primary), var(--accent));
+    border-radius:2px; transition: width 0.05s linear;
+  }
+  .loader-text {
+    font-family: var(--font-display);
+    font-size: 52px; letter-spacing: 4px;
+    background: linear-gradient(135deg, var(--primary-glow), var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .loader-sub { font-size:11px; letter-spacing:3px; color:var(--muted); margin-top:8px; text-transform:uppercase; }
+
+  /* ─── NAV ────────────────────────────────────────────────────── */
+  nav {
+    position: fixed; top:0; left:0; right:0; z-index:1000;
+    padding: 20px 48px;
+    display:flex; justify-content:space-between; align-items:center;
+    transition: background 0.4s, backdrop-filter 0.4s, padding 0.3s;
+  }
+  nav.scrolled {
+    background: rgba(5,5,8,0.85);
+    backdrop-filter: blur(16px);
+    padding: 14px 48px;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-logo {
+    font-family: var(--font-display);
+    font-size: 26px;
+    letter-spacing: 2px;
+    background: linear-gradient(120deg, var(--primary-glow), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .nav-links { display:flex; gap:32px; list-style:none; }
+  .nav-links a {
+    color: var(--muted); text-decoration:none; font-size:13px; font-weight:500;
+    letter-spacing:1px; text-transform:uppercase; position:relative;
+    transition: color 0.2s;
+  }
+  .nav-links a::after {
+    content:''; position:absolute; bottom:-3px; left:0; width:0; height:1px;
+    background: var(--primary-glow); transition: width 0.3s;
+  }
+  .nav-links a:hover { color: var(--text); }
+  .nav-links a:hover::after { width:100%; }
+  .nav-cta {
+    background: var(--primary); color:#fff; padding:9px 22px;
+    border-radius: 4px; font-size:13px; font-weight:600; letter-spacing:1px;
+    text-transform:uppercase; cursor:none; text-decoration:none;
+    transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 0 0 0 rgba(124,58,237,0.5);
+  }
+  .nav-cta:hover {
+    background: var(--primary-glow);
+    box-shadow: 0 0 20px rgba(168,85,247,0.4);
+    transform: translateY(-1px);
+  }
+  .hamburger { display:none; flex-direction:column; gap:5px; cursor:none; }
+  .hamburger span { width:24px; height:2px; background:var(--text); border-radius:2px; transition:all 0.3s; }
+
+  /* ─── HERO ───────────────────────────────────────────────────── */
+  #hero {
+    min-height: 100vh;
+    display:flex; align-items:center; justify-content:center;
+    position:relative; overflow:hidden;
+    padding: 120px 48px 80px;
+  }
+  .hero-bg-grid {
+    position:absolute; inset:0; z-index:0;
+    background-image:
+      linear-gradient(rgba(124,58,237,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,58,237,0.06) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 100%);
+  }
+  .hero-orb {
+    position:absolute; border-radius:50%; filter:blur(80px); pointer-events:none;
+  }
+  .hero-orb-1 {
+    width:500px; height:500px;
+    background: radial-gradient(circle, rgba(124,58,237,0.25), transparent 70%);
+    top:-100px; left:-100px;
+    animation: orbFloat 8s ease-in-out infinite;
+  }
+  .hero-orb-2 {
+    width:400px; height:400px;
+    background: radial-gradient(circle, rgba(245,158,11,0.15), transparent 70%);
+    bottom:-80px; right:-60px;
+    animation: orbFloat 10s ease-in-out infinite reverse;
+  }
+  .hero-orb-3 {
+    width:300px; height:300px;
+    background: radial-gradient(circle, rgba(6,182,212,0.12), transparent 70%);
+    top:40%; left:60%;
+    animation: orbFloat 7s ease-in-out infinite 2s;
+  }
+  @keyframes orbFloat {
+    0%,100%{ transform:translate(0,0) scale(1); }
+    33%{ transform:translate(20px,-30px) scale(1.05); }
+    66%{ transform:translate(-15px,20px) scale(0.95); }
+  }
+  .hero-content { position:relative; z-index:1; max-width:900px; }
+  .hero-tag {
+    display:inline-flex; align-items:center; gap:8px;
+    background: rgba(124,58,237,0.12); border:1px solid var(--border);
+    padding:6px 16px; border-radius:100px;
+    font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--primary-glow);
+    margin-bottom:32px;
+    animation: fadeUp 0.8s ease 0.3s both;
+  }
+  .hero-tag-dot { width:6px; height:6px; border-radius:50%; background:var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+  .hero-h1 {
+    font-family: var(--font-display);
+    font-size: clamp(60px, 10vw, 140px);
+    line-height: 0.92;
+    letter-spacing: 2px;
+    margin-bottom: 24px;
+    animation: fadeUp 0.8s ease 0.5s both;
+  }
+  .hero-h1 .line { display:block; overflow:hidden; }
+  .hero-h1 .line span { display:block; animation: slideUp 0.9s cubic-bezier(.16,1,.3,1) both; }
+  .hero-h1 .line:nth-child(2) span { animation-delay: 0.15s; }
+  .hero-h1 .line:nth-child(3) span { animation-delay: 0.3s; }
+  @keyframes slideUp { from{transform:translateY(110%);} to{transform:translateY(0);} }
+  @keyframes fadeUp { from{opacity:0; transform:translateY(24px);} to{opacity:1; transform:translateY(0);} }
+  .hero-h1 .grad {
+    background: linear-gradient(135deg, var(--primary-glow) 0%, var(--accent) 50%, var(--accent2) 100%);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    background-clip:text;
+    background-size:200% 200%;
+    animation: gradShift 4s ease infinite;
+  }
+  @keyframes gradShift {
+    0%{background-position:0% 50%;}
+    50%{background-position:100% 50%;}
+    100%{background-position:0% 50%;}
+  }
+  .hero-desc {
+    font-size: 17px; color: var(--muted); max-width:520px; line-height:1.7;
+    margin-bottom:48px;
+    animation: fadeUp 0.8s ease 0.8s both;
+  }
+  .hero-btns {
+    display:flex; gap:16px; flex-wrap:wrap;
+    animation: fadeUp 0.8s ease 1s both;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--primary), var(--primary-glow));
+    color:#fff; padding:14px 32px; border-radius:6px;
+    font-size:14px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase;
+    cursor:none; text-decoration:none; border:none;
+    position:relative; overflow:hidden;
+    transition: transform 0.2s, box-shadow 0.3s;
+    box-shadow: 0 4px 24px rgba(124,58,237,0.35);
+  }
+  .btn-primary::before {
+    content:''; position:absolute; inset:0;
+    background: linear-gradient(135deg, var(--primary-glow), var(--accent));
+    opacity:0; transition:opacity 0.3s;
+  }
+  .btn-primary:hover { transform:translateY(-2px); box-shadow:0 8px 32px rgba(124,58,237,0.5); }
+  .btn-primary:hover::before { opacity:1; }
+  .btn-primary span { position:relative; z-index:1; }
+  .btn-outline {
+    background:transparent; color:var(--text); padding:14px 32px; border-radius:6px;
+    font-size:14px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase;
+    cursor:none; text-decoration:none;
+    border: 1px solid rgba(255,255,255,0.12);
+    transition: border-color 0.2s, background 0.2s, transform 0.2s;
+  }
+  .btn-outline:hover { border-color:var(--primary-glow); background:rgba(124,58,237,0.08); transform:translateY(-2px); }
+  .hero-scroll {
+    position:absolute; bottom:40px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    color:var(--muted); font-size:11px; letter-spacing:2px; text-transform:uppercase;
+    animation: fadeIn 1s ease 2s both;
+  }
+  .hero-scroll-line {
+    width:1px; height:50px;
+    background: linear-gradient(to bottom, var(--primary-glow), transparent);
+    animation: scrollLine 2s ease-in-out infinite;
+  }
+  @keyframes scrollLine { 0%{transform:scaleY(0); transform-origin:top;} 50%{transform:scaleY(1); transform-origin:top;} 51%{transform-origin:bottom;} 100%{transform:scaleY(0); transform-origin:bottom;} }
+  @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+
+  /* ─── MARQUEE ────────────────────────────────────────────────── */
+  .marquee-section {
+    padding: 28px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    overflow:hidden; position:relative;
+    background: rgba(124,58,237,0.03);
+  }
+  .marquee-track {
+    display:flex; gap:48px; width:max-content;
+    animation: marquee 20s linear infinite;
+  }
+  .marquee-track:hover { animation-play-state:paused; }
+  @keyframes marquee { from{transform:translateX(0);} to{transform:translateX(-50%);} }
+  .marquee-item {
+    display:flex; align-items:center; gap:12px; white-space:nowrap;
+    font-family: var(--font-display); font-size:18px; letter-spacing:2px;
+    color: var(--muted);
+  }
+  .marquee-item .dot { width:6px; height:6px; border-radius:50%; background:var(--accent); }
+
+  /* ─── SECTIONS SHARED ────────────────────────────────────────── */
+  section { padding: 100px 48px; }
+  .section-label {
+    font-size:11px; letter-spacing:4px; text-transform:uppercase;
+    color: var(--primary-glow); margin-bottom:16px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .section-label::before { content:''; width:32px; height:1px; background:var(--primary-glow); }
+  .section-title {
+    font-family: var(--font-head); font-size: clamp(32px,5vw,60px);
+    font-weight:800; line-height:1.05; margin-bottom:16px;
+  }
+  .section-sub { color:var(--muted); font-size:16px; max-width:520px; line-height:1.7; }
+
+  /* ─── SERVICES ───────────────────────────────────────────────── */
+  #services { background: var(--bg2); }
+  .services-grid {
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:2px;
+    margin-top:64px;
+  }
+  .service-card {
+    background: var(--surface);
+    padding:40px 36px; position:relative; overflow:hidden;
+    transition: transform 0.3s, background 0.3s;
+    cursor:none;
+  }
+  .service-card::before {
+    content:''; position:absolute; top:0; left:0; right:0;
+    height:2px;
+    background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    transform:scaleX(0); transition:transform 0.4s;
+  }
+  .service-card:hover::before { transform:scaleX(1); }
+  .service-card:hover { background: rgba(124,58,237,0.07); transform:translateY(-4px); }
+  .service-icon {
+    width:52px; height:52px; border-radius:12px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:24px; margin-bottom:24px;
+    background: rgba(124,58,237,0.12);
+    border:1px solid var(--border);
+    transition: transform 0.3s, background 0.3s;
+  }
+  .service-card:hover .service-icon { transform:scale(1.1) rotate(-5deg); background:rgba(124,58,237,0.2); }
+  .service-title { font-family:var(--font-head); font-size:22px; font-weight:700; margin-bottom:12px; }
+  .service-desc { color:var(--muted); font-size:14px; line-height:1.7; }
+  .service-num {
+    position:absolute; top:24px; right:28px;
+    font-family:var(--font-display); font-size:72px; color:rgba(255,255,255,0.025);
+    line-height:1; pointer-events:none; user-select:none;
+  }
+
+  /* ─── PRICING ────────────────────────────────────────────────── */
+  #pricing { position:relative; overflow:hidden; }
+  .price-bg {
+    position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(ellipse 60% 60% at 70% 50%, rgba(124,58,237,0.08), transparent);
+  }
+  .pricing-wrap { position:relative; z-index:1; }
+  .pricing-card {
+    max-width: 680px; margin: 64px auto 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius:16px; overflow:hidden;
+    position:relative;
+  }
+  .pricing-card::before {
+    content:'';
+    position:absolute; top:0; left:0; right:0; height:3px;
+    background: linear-gradient(90deg, var(--primary), var(--accent), var(--accent2));
+  }
+  .pricing-header {
+    padding:40px 48px 32px;
+    border-bottom:1px solid var(--border);
+  }
+  .pricing-base {
+    display:flex; align-items:baseline; gap:8px;
+    margin-bottom:12px;
+  }
+  .price-amount {
+    font-family:var(--font-display); font-size:72px; line-height:1;
+    background: linear-gradient(135deg, var(--text), var(--primary-glow));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .price-unit { font-size:16px; color:var(--muted); }
+  .price-note { font-size:13px; color:var(--muted); }
+  .pricing-body { padding:40px 48px; }
+  .pricing-formula {
+    background: rgba(124,58,237,0.06); border:1px solid var(--border);
+    border-radius:10px; padding:24px 28px; margin-bottom:32px;
+    font-size:14px; line-height:2;
+  }
+  .formula-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .formula-badge {
+    display:inline-flex; align-items:center; gap:6px;
+    background: rgba(124,58,237,0.15); border:1px solid rgba(124,58,237,0.3);
+    padding:4px 12px; border-radius:100px; font-size:13px; font-weight:600;
+    color: var(--primary-glow);
+  }
+  .formula-badge.amber { background:rgba(245,158,11,0.12); border-color:rgba(245,158,11,0.3); color:var(--accent); }
+  .formula-badge.cyan { background:rgba(6,182,212,0.12); border-color:rgba(6,182,212,0.3); color:var(--accent2); }
+  .formula-divider { width:100%; height:1px; background:var(--border); margin:12px 0; }
+
+  /* ─── CALCULATOR ─────────────────────────────────────────────── */
+  .calc-section {
+    max-width:680px; margin:64px auto 0;
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:40px 48px; position:relative; overflow:hidden;
+  }
+  .calc-section::before {
+    content:'CALC'; position:absolute; right:24px; top:16px;
+    font-family:var(--font-display); font-size:80px; color:rgba(255,255,255,0.02);
+    pointer-events:none; user-select:none;
+  }
+  .calc-title { font-family:var(--font-head); font-size:22px; font-weight:700; margin-bottom:28px; }
+  .calc-inputs { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:28px; }
+  .calc-field label { display:block; font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+  .calc-field input {
+    width:100%; background:rgba(255,255,255,0.04); border:1px solid var(--border);
+    border-radius:8px; padding:12px 16px; color:var(--text);
+    font-family:var(--font-body); font-size:16px; font-weight:500;
+    outline:none; cursor:none;
+    transition:border-color 0.2s, box-shadow 0.2s;
+  }
+  .calc-field input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(124,58,237,0.12); }
+  .calc-result {
+    background: linear-gradient(135deg, rgba(124,58,237,0.12), rgba(245,158,11,0.06));
+    border:1px solid var(--border); border-radius:10px; padding:24px 28px;
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;
+  }
+  .calc-result-label { font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+  .calc-result-value {
+    font-family:var(--font-display); font-size:48px; line-height:1;
+    background: linear-gradient(135deg, var(--accent), var(--primary-glow));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .calc-breakdown { font-size:13px; color:var(--muted); line-height:1.8; }
+
+  /* ─── PROCESS ────────────────────────────────────────────────── */
+  #process { background:var(--bg2); }
+  .process-track {
+    position:relative; margin-top:72px;
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:0;
+  }
+  .process-track::before {
+    content:''; position:absolute; top:32px; left:0; right:0; height:1px;
+    background: linear-gradient(90deg, transparent, var(--border) 10%, var(--border) 90%, transparent);
+    z-index:0;
+  }
+  .process-step {
+    position:relative; z-index:1; padding:0 24px 40px;
+    text-align:center; cursor:none;
+    transition: transform 0.3s;
+  }
+  .process-step:hover { transform:translateY(-6px); }
+  .process-num {
+    width:64px; height:64px; border-radius:50%;
+    background: var(--surface); border:2px solid var(--border);
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-display); font-size:28px; color:var(--primary-glow);
+    margin:0 auto 24px;
+    transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+  }
+  .process-step:hover .process-num {
+    border-color:var(--primary-glow);
+    box-shadow:0 0 20px rgba(168,85,247,0.3);
+    background: rgba(124,58,237,0.12);
+  }
+  .process-step-title { font-family:var(--font-head); font-size:17px; font-weight:700; margin-bottom:10px; }
+  .process-step-desc { font-size:13px; color:var(--muted); line-height:1.6; }
+
+  /* ─── STATS ──────────────────────────────────────────────────── */
+  #stats { padding:80px 48px; }
+  .stats-grid {
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:2px;
+    margin-top:64px; border:1px solid var(--border);
+  }
+  .stat-item {
+    padding:40px 32px; background:var(--surface);
+    position:relative; overflow:hidden; cursor:none;
+    transition:background 0.3s;
+  }
+  .stat-item:hover { background:rgba(124,58,237,0.06); }
+  .stat-num {
+    font-family:var(--font-display); font-size:clamp(48px,5vw,72px);
+    line-height:1;
+    background: linear-gradient(135deg, var(--text) 40%, var(--primary-glow));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    margin-bottom:8px;
+  }
+  .stat-label { font-size:13px; color:var(--muted); letter-spacing:1px; }
+  .stat-item::after {
+    content:''; position:absolute; bottom:0; left:0; right:0; height:2px;
+    background: linear-gradient(90deg, var(--primary), var(--accent));
+    transform:scaleX(0); transform-origin:left; transition:transform 0.4s;
+  }
+  .stat-item:hover::after { transform:scaleX(1); }
+
+  /* ─── PORTFOLIO GRID ─────────────────────────────────────────── */
+  #portfolio { background:var(--bg2); }
+  .portfolio-grid {
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:2px; margin-top:64px;
+  }
+  .port-item {
+    aspect-ratio:16/10; position:relative; overflow:hidden;
+    background:var(--surface); cursor:none;
+    transition:transform 0.3s;
+  }
+  .port-item:first-child { grid-column:span 2; }
+  .port-item-bg {
+    position:absolute; inset:0;
+    transition:transform 0.6s cubic-bezier(.16,1,.3,1);
+  }
+  .port-item:hover .port-item-bg { transform:scale(1.06); }
+  .port-item-bg-1 { background: linear-gradient(135deg, #1a0533, #4c1d95, #0a0a1a); }
+  .port-item-bg-2 { background: linear-gradient(135deg, #0a1a0a, #065f46, #0a0a1a); }
+  .port-item-bg-3 { background: linear-gradient(135deg, #1a0a00, #92400e, #0a0a1a); }
+  .port-item-bg-4 { background: linear-gradient(135deg, #001a2c, #0c4a6e, #0a0a1a); }
+  .port-item-bg-5 { background: linear-gradient(135deg, #2d0a33, #6b21a8, #0a0a1a); }
+  .port-3d-scene {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:80px; opacity:0.15; user-select:none;
+    transition:opacity 0.3s, transform 0.5s;
+  }
+  .port-item:hover .port-3d-scene { opacity:0.35; transform:scale(1.1) rotate(5deg); }
+  .port-item-overlay {
+    position:absolute; inset:0; background:linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 60%);
+    padding:24px 28px; display:flex; flex-direction:column; justify-content:flex-end;
+    transform:translateY(20px); opacity:0; transition:opacity 0.35s, transform 0.35s;
+  }
+  .port-item:hover .port-item-overlay { opacity:1; transform:translateY(0); }
+  .port-item-title { font-family:var(--font-head); font-size:18px; font-weight:700; }
+  .port-item-tag { font-size:11px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-top:4px; }
+  .port-item-duration {
+    position:absolute; top:16px; right:16px;
+    background:rgba(0,0,0,0.6); backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,0.08);
+    padding:4px 10px; border-radius:100px;
+    font-size:11px; color:var(--muted); letter-spacing:1px;
+  }
+
+  /* ─── TESTIMONIAL ────────────────────────────────────────────── */
+  #testimonial { position:relative; overflow:hidden; }
+  .testi-bg {
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse 50% 60% at 30% 40%, rgba(124,58,237,0.07), transparent);
+    pointer-events:none;
+  }
+  .testi-slider { margin-top:64px; position:relative; }
+  .testi-track { display:flex; gap:24px; overflow:hidden; }
+  .testi-card {
+    min-width:calc(50% - 12px); background:var(--surface);
+    border:1px solid var(--border); border-radius:12px;
+    padding:36px 40px; position:relative; overflow:hidden;
+    transition:transform 0.3s, border-color 0.3s;
+    cursor:none; flex-shrink:0;
+  }
+  .testi-card::before {
+    content:'"'; position:absolute; top:-10px; right:24px;
+    font-family:var(--font-display); font-size:160px; color:rgba(124,58,237,0.06);
+    line-height:1; pointer-events:none;
+  }
+  .testi-card:hover { transform:translateY(-4px); border-color:rgba(124,58,237,0.4); }
+  .testi-text { font-size:15px; color:var(--muted); line-height:1.8; margin-bottom:24px; position:relative; z-index:1; }
+  .testi-author { display:flex; align-items:center; gap:12px; }
+  .testi-avatar {
+    width:44px; height:44px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; font-weight:700; color:#fff;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    flex-shrink:0;
+  }
+  .testi-name { font-size:14px; font-weight:600; }
+  .testi-role { font-size:12px; color:var(--muted); }
+  .testi-nav { display:flex; gap:12px; margin-top:32px; }
+  .testi-btn {
+    width:44px; height:44px; border-radius:50%; background:var(--surface);
+    border:1px solid var(--border); color:var(--text); font-size:18px;
+    display:flex; align-items:center; justify-content:center;
+    cursor:none; transition:background 0.2s, border-color 0.2s, transform 0.2s;
+  }
+  .testi-btn:hover { background:var(--primary); border-color:var(--primary); transform:scale(1.08); }
+
+  /* ─── FAQ ────────────────────────────────────────────────────── */
+  #faq { background:var(--bg2); }
+  .faq-list { max-width:720px; margin:64px auto 0; }
+  .faq-item {
+    border-bottom:1px solid var(--border); cursor:none;
+    overflow:hidden;
+  }
+  .faq-q {
+    padding:24px 0; display:flex; justify-content:space-between; align-items:center;
+    gap:24px; font-size:16px; font-weight:600;
+    transition:color 0.2s;
+  }
+  .faq-item:hover .faq-q { color:var(--primary-glow); }
+  .faq-icon {
+    width:28px; height:28px; border-radius:50%;
+    background:var(--surface); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; flex-shrink:0; transition:transform 0.3s, background 0.3s;
+  }
+  .faq-item.open .faq-icon { transform:rotate(45deg); background:var(--primary); border-color:var(--primary); }
+  .faq-a {
+    max-height:0; overflow:hidden;
+    transition:max-height 0.4s cubic-bezier(.16,1,.3,1), padding 0.3s;
+    font-size:14px; color:var(--muted); line-height:1.8;
+  }
+  .faq-item.open .faq-a { max-height:200px; padding-bottom:20px; }
+
+  /* ─── CTA SECTION ────────────────────────────────────────────── */
+  #cta {
+    padding:120px 48px;
+    text-align:center; position:relative; overflow:hidden;
+  }
+  .cta-bg {
+    position:absolute; inset:0;
+    background: linear-gradient(135deg, rgba(124,58,237,0.1) 0%, rgba(245,158,11,0.05) 50%, rgba(6,182,212,0.05) 100%);
+    pointer-events:none;
+  }
+  .cta-bg-lines {
+    position:absolute; inset:0; pointer-events:none;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 59px, rgba(124,58,237,0.04) 60px),
+      repeating-linear-gradient(90deg, transparent, transparent 59px, rgba(124,58,237,0.04) 60px);
+  }
+  .cta-inner { position:relative; z-index:1; max-width:700px; margin:0 auto; }
+  .cta-h2 {
+    font-family:var(--font-display); font-size:clamp(48px,8vw,100px);
+    line-height:0.95; letter-spacing:2px; margin-bottom:24px;
+  }
+  .cta-sub { font-size:17px; color:var(--muted); margin-bottom:48px; line-height:1.7; }
+  .cta-btns { display:flex; gap:16px; justify-content:center; flex-wrap:wrap; }
+
+  /* ─── FOOTER ─────────────────────────────────────────────────── */
+  footer {
+    border-top:1px solid var(--border);
+    padding:48px;
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:24px;
+  }
+  .footer-logo {
+    font-family:var(--font-display); font-size:28px; letter-spacing:2px;
+    background: linear-gradient(120deg, var(--primary-glow), var(--accent));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .footer-links { display:flex; gap:24px; flex-wrap:wrap; }
+  .footer-links a { color:var(--muted); text-decoration:none; font-size:13px; transition:color 0.2s; }
+  .footer-links a:hover { color:var(--text); }
+  .footer-copy { font-size:12px; color:var(--muted); }
+
+  /* ─── REVEAL ANIMATIONS ──────────────────────────────────────── */
+  .reveal {
+    opacity:0; transform:translateY(32px);
+    transition:opacity 0.7s cubic-bezier(.16,1,.3,1), transform 0.7s cubic-bezier(.16,1,.3,1);
+  }
+  .reveal.visible { opacity:1; transform:translateY(0); }
+  .reveal-left { opacity:0; transform:translateX(-40px); transition:opacity 0.7s cubic-bezier(.16,1,.3,1), transform 0.7s cubic-bezier(.16,1,.3,1); }
+  .reveal-left.visible { opacity:1; transform:translateX(0); }
+  .reveal-right { opacity:0; transform:translateX(40px); transition:opacity 0.7s cubic-bezier(.16,1,.3,1), transform 0.7s cubic-bezier(.16,1,.3,1); }
+  .reveal-right.visible { opacity:1; transform:translateX(0); }
+  .delay-1 { transition-delay: 0.1s; }
+  .delay-2 { transition-delay: 0.2s; }
+  .delay-3 { transition-delay: 0.3s; }
+  .delay-4 { transition-delay: 0.4s; }
+  .delay-5 { transition-delay: 0.5s; }
+
+  /* ─── FLOATING PARTICLES ─────────────────────────────────────── */
+  #particles { position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+  .particle {
+    position:absolute; border-radius:50%;
+    background: radial-gradient(circle, rgba(124,58,237,0.6), transparent);
+    animation: particleDrift linear infinite;
+  }
+  @keyframes particleDrift {
+    0%{ transform:translateY(100vh) translateX(0) scale(0); opacity:0; }
+    5%{ opacity:1; }
+    95%{ opacity:1; }
+    100%{ transform:translateY(-20vh) translateX(var(--drift,40px)) scale(1); opacity:0; }
+  }
+
+  /* ─── MAGNETIC BUTTONS ───────────────────────────────────────── */
+  .magnetic { display:inline-block; }
+
+  /* ─── MOBILE ─────────────────────────────────────────────────── */
+  @media(max-width:768px) {
+    nav { padding:16px 24px; }
+    nav.scrolled { padding:12px 24px; }
+    .nav-links, .nav-cta { display:none; }
+    .hamburger { display:flex; }
+    #hero { padding:100px 24px 60px; }
+    section { padding:64px 24px; }
+    .services-grid { grid-template-columns:1fr; }
+    .portfolio-grid { grid-template-columns:1fr; }
+    .port-item:first-child { grid-column:span 1; }
+    .testi-card { min-width:100%; }
+    .calc-inputs { grid-template-columns:1fr; }
+    .pricing-header, .pricing-body, .calc-section { padding:28px 24px; }
+    footer { flex-direction:column; padding:32px 24px; }
+    .process-track::before { display:none; }
+    .stats-grid { grid-template-columns:repeat(2,1fr); }
+    #cta { padding:80px 24px; }
+    .cta-btns { flex-direction:column; align-items:center; }
+    .hero-btns { flex-direction:column; }
+    .btn-primary, .btn-outline { text-align:center; }
+  }
+  @media(max-width:480px) {
+    .pricing-base { flex-wrap:wrap; }
+    .price-amount { font-size:52px; }
+  }
+
+  /* ─── MOBILE MENU ────────────────────────────────────────────── */
+  #mobile-menu {
+    position:fixed; inset:0; background:rgba(5,5,8,0.97);
+    backdrop-filter:blur(20px); z-index:999;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:32px; transform:translateX(100%); transition:transform 0.4s cubic-bezier(.16,1,.3,1);
+  }
+  #mobile-menu.open { transform:translateX(0); }
+  #mobile-menu a {
+    font-family:var(--font-display); font-size:40px; letter-spacing:2px;
+    color:var(--text); text-decoration:none; transition:color 0.2s;
+  }
+  #mobile-menu a:hover { color:var(--primary-glow); }
+
+  /* ─── TILT EFFECT ────────────────────────────────────────────── */
+  .tilt { transform-style:preserve-3d; transition:transform 0.1s; }
+
+  /* ─── HOVER UNDERLINE LINK ───────────────────────────────────── */
+  .link-fancy {
+    color:var(--primary-glow); text-decoration:none; position:relative;
+    font-weight:600;
+  }
+  .link-fancy::after {
+    content:''; position:absolute; bottom:-1px; left:0; width:100%; height:1px;
+    background:var(--primary-glow); transform:scaleX(0); transform-origin:right;
+    transition:transform 0.3s;
+  }
+  .link-fancy:hover::after { transform:scaleX(1); transform-origin:left; }
+</style>
+</head>
+<body>
+
+<!-- CURSOR -->
+<div id="cursor-dot"></div>
+<div id="cursor-ring"></div>
+
+<!-- PARTICLES -->
+<div id="particles"></div>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-text">LOADING</div>
+  <div class="loader-sub">AI 3D Animation Studio</div>
+  <div class="loader-bar-wrap"><div class="loader-bar" id="loader-bar"></div></div>
+</div>
+
+<!-- MOBILE MENU -->
+<div id="mobile-menu">
+  <a href="#services">Layanan</a>
+  <a href="#pricing">Harga</a>
+  <a href="#portfolio">Portfolio</a>
+  <a href="#process">Proses</a>
+  <a href="#faq">FAQ</a>
+  <a href="#cta" class="nav-cta" style="font-size:20px;padding:12px 32px;">Pesan Sekarang</a>
+</div>
+
+<!-- NAV -->
+<nav id="navbar">
+  <div class="nav-logo">VIZION3D</div>
+  <ul class="nav-links">
+    <li><a href="#services">Layanan</a></li>
+    <li><a href="#pricing">Harga</a></li>
+    <li><a href="#portfolio">Portfolio</a></li>
+    <li><a href="#process">Proses</a></li>
+    <li><a href="#faq">FAQ</a></li>
+  </ul>
+  <a href="#cta" class="nav-cta magnetic">Pesan Sekarang</a>
+  <div class="hamburger" id="hamburger">
+    <span></span><span></span><span></span>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-bg-grid"></div>
+  <div class="hero-orb hero-orb-1"></div>
+  <div class="hero-orb hero-orb-2"></div>
+  <div class="hero-orb hero-orb-3"></div>
+  <div class="hero-content">
+    <div class="hero-tag"><span class="hero-tag-dot"></span>AI-Powered 3D Animation Studio</div>
+    <h1 class="hero-h1">
+      <div class="line"><span>ANIMASI</span></div>
+      <div class="line"><span class="grad">3D VISUAL</span></div>
+      <div class="line"><span>BERKELAS</span></div>
+    </h1>
+    <p class="hero-desc">Ubah ide biasa menjadi video animasi 3D memukau menggunakan kekuatan AI terkini. Cepat, tajam, dan profesional.</p>
+    <div class="hero-btns">
+      <a href="#pricing" class="btn-primary magnetic"><span>Lihat Harga</span></a>
+      <a href="#portfolio" class="btn-outline magnetic">Lihat Karya</a>
+    </div>
+  </div>
+  <div class="hero-scroll">
+    <div class="hero-scroll-line"></div>
+    <span>Scroll</span>
+  </div>
+</section>
+
+<!-- MARQUEE -->
+<div class="marquee-section">
+  <div class="marquee-track" id="marquee">
+    <div class="marquee-item"><span class="dot"></span>3D ANIMATION</div>
+    <div class="marquee-item"><span class="dot"></span>AI POWERED</div>
+    <div class="marquee-item"><span class="dot"></span>VISUAL EFFECTS</div>
+    <div class="marquee-item"><span class="dot"></span>MOTION GRAPHICS</div>
+    <div class="marquee-item"><span class="dot"></span>PRODUCT VISUALIZATION</div>
+    <div class="marquee-item"><span class="dot"></span>CHARACTER ANIMATION</div>
+    <div class="marquee-item"><span class="dot"></span>CINEMATIC SCENES</div>
+    <!-- duplicate -->
+    <div class="marquee-item"><span class="dot"></span>3D ANIMATION</div>
+    <div class="marquee-item"><span class="dot"></span>AI POWERED</div>
+    <div class="marquee-item"><span class="dot"></span>VISUAL EFFECTS</div>
+    <div class="marquee-item"><span class="dot"></span>MOTION GRAPHICS</div>
+    <div class="marquee-item"><span class="dot"></span>PRODUCT VISUALIZATION</div>
+    <div class="marquee-item"><span class="dot"></span>CHARACTER ANIMATION</div>
+    <div class="marquee-item"><span class="dot"></span>CINEMATIC SCENES</div>
+  </div>
+</div>
+
+<!-- SERVICES -->
+<section id="services">
+  <div class="section-label reveal">Layanan Kami</div>
+  <h2 class="section-title reveal delay-1">Apa yang Bisa<br>Kami Buat?</h2>
+  <p class="section-sub reveal delay-2">Dari visualisasi produk hingga animasi karakter penuh—semua dikerjakan dengan presisi AI.</p>
+  <div class="services-grid">
+    <div class="service-card reveal delay-1">
+      <div class="service-num">01</div>
+      <div class="service-icon">🎬</div>
+      <div class="service-title">Animasi Produk 3D</div>
+      <div class="service-desc">Tampilkan produkmu dengan sudut pandang 360° yang memukau. Cocok untuk iklan, e-commerce, dan presentasi bisnis.</div>
+    </div>
+    <div class="service-card reveal delay-2">
+      <div class="service-num">02</div>
+      <div class="service-icon">🤖</div>
+      <div class="service-title">Animasi Karakter AI</div>
+      <div class="service-desc">Karakter 3D bergerak realistis dengan ekspresi dan gestur natural—ditenagai AI generation terdepan.</div>
+    </div>
+    <div class="service-card reveal delay-3">
+      <div class="service-num">03</div>
+      <div class="service-icon">🌌</div>
+      <div class="service-title">Cinematic Scene</div>
+      <div class="service-desc">Visualisasi lingkungan, arsitektur, atau dunia fantasi dalam kualitas sinematik yang tak tertandingi.</div>
+    </div>
+    <div class="service-card reveal delay-4">
+      <div class="service-num">04</div>
+      <div class="service-icon">⚡</div>
+      <div class="service-title">Motion Graphics</div>
+      <div class="service-desc">Logo animation, intro video, dan explainer motion graphics yang dinamis dan profesional.</div>
+    </div>
+    <div class="service-card reveal delay-5">
+      <div class="service-num">05</div>
+      <div class="service-icon">🎯</div>
+      <div class="service-title">Visual Iklan</div>
+      <div class="service-desc">Konten iklan 3D yang eye-catching untuk social media, YouTube, dan platform digital lainnya.</div>
+    </div>
+    <div class="service-card reveal delay-1">
+      <div class="service-num">06</div>
+      <div class="service-icon">🏗️</div>
+      <div class="service-title">Visualisasi Arsitektur</div>
+      <div class="service-desc">Rendering 3D interior dan eksterior berkualitas tinggi untuk proyek properti dan desain.</div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section id="pricing">
+  <div class="price-bg"></div>
+  <div class="pricing-wrap">
+    <div class="section-label reveal">Harga Transparan</div>
+    <h2 class="section-title reveal delay-1">Bayar Sesuai<br>Durasi Video</h2>
+    <p class="section-sub reveal delay-2">Sistem perhitungan per detik yang adil. Tidak ada biaya tersembunyi.</p>
+
+    <div class="pricing-card reveal delay-2">
+      <div class="pricing-header">
+        <div class="pricing-base">
+          <div class="price-amount">Rp150K</div>
+          <div class="price-unit">/ menit pertama</div>
+        </div>
+        <div class="price-note">≈ Rp2.500 per detik • berlaku untuk video &lt; 60 detik</div>
+      </div>
+      <div class="pricing-body">
+        <div class="pricing-formula">
+          <div class="formula-row">
+            <span>Video</span>
+            <span class="formula-badge">≤ 60 detik</span>
+            <span>→ Flat</span>
+            <span class="formula-badge amber">Rp150.000</span>
+          </div>
+          <div class="formula-divider"></div>
+          <div class="formula-row">
+            <span>Misal video</span>
+            <span class="formula-badge">72 detik</span>
+            <span>→ tambahan</span>
+            <span class="formula-badge">12 detik × Rp2.500</span>
+            <span>=</span>
+            <span class="formula-badge amber">+Rp30.000</span>
+          </div>
+          <div class="formula-divider"></div>
+          <div class="formula-row">
+            <span>Total untuk 72 detik</span>
+            <span>=</span>
+            <span class="formula-badge cyan" style="font-size:15px;">Rp180.000</span>
+          </div>
+        </div>
+        <p style="font-size:13px;color:var(--muted);line-height:1.8;">
+          Harga sudah termasuk revisi minor. Untuk revisi besar atau penambahan elemen, silakan diskusi terlebih dahulu. <a href="#cta" class="link-fancy">Hubungi kami</a> untuk project custom atau berlangganan bulanan.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CALCULATOR -->
+<section style="padding:0 48px 100px; background:var(--bg);">
+  <div class="calc-section reveal">
+    <div class="calc-title">🧮 Kalkulator Harga Instan</div>
+    <div class="calc-inputs">
+      <div class="calc-field">
+        <label>Menit</label>
+        <input type="number" id="calc-min" min="0" value="1" placeholder="0" />
+      </div>
+      <div class="calc-field">
+        <label>Detik (sisa)</label>
+        <input type="number" id="calc-sec" min="0" max="59" value="0" placeholder="0" />
+      </div>
+    </div>
+    <div class="calc-result">
+      <div>
+        <div class="calc-result-label">Estimasi Harga</div>
+        <div class="calc-result-value" id="calc-output">Rp150.000</div>
+      </div>
+      <div class="calc-breakdown" id="calc-detail">
+        Durasi: 60 detik<br>
+        Base: Rp150.000<br>
+        Tambahan: —
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROCESS -->
+<section id="process">
+  <div class="section-label reveal">Cara Kerja</div>
+  <h2 class="section-title reveal delay-1">Dari Brief<br>ke Layar</h2>
+  <p class="section-sub reveal delay-2">Proses streamlined 5 langkah yang efisien dan transparan.</p>
+  <div class="process-track">
+    <div class="process-step reveal delay-1">
+      <div class="process-num">01</div>
+      <div class="process-step-title">Brief & Konsep</div>
+      <div class="process-step-desc">Ceritakan visi kamu. Kami siapkan mood board dan direction.</div>
+    </div>
+    <div class="process-step reveal delay-2">
+      <div class="process-num">02</div>
+      <div class="process-step-title">AI Generation</div>
+      <div class="process-step-desc">Proses AI menghasilkan aset 3D dan animasi awal secara cepat.</div>
+    </div>
+    <div class="process-step reveal delay-3">
+      <div class="process-num">03</div>
+      <div class="process-step-title">Refinement</div>
+      <div class="process-step-desc">Polesan manual untuk lighting, texture, dan transisi yang halus.</div>
+    </div>
+    <div class="process-step reveal delay-4">
+      <div class="process-num">04</div>
+      <div class="process-step-title">Review & Revisi</div>
+      <div class="process-step-desc">Preview untuk feedback. Revisi dilakukan sampai kamu puas.</div>
+    </div>
+    <div class="process-step reveal delay-5">
+      <div class="process-num">05</div>
+      <div class="process-step-title">Deliver</div>
+      <div class="process-step-desc">File final dalam format MP4 / MOV 4K siap digunakan.</div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section id="stats">
+  <div class="section-label reveal">Numbers</div>
+  <h2 class="section-title reveal delay-1">Studio dalam<br>Angka</h2>
+  <div class="stats-grid">
+    <div class="stat-item reveal delay-1">
+      <div class="stat-num" data-count="120">0</div>
+      <div class="stat-label">Project Selesai</div>
+    </div>
+    <div class="stat-item reveal delay-2">
+      <div class="stat-num" data-count="98">0</div>
+      <div class="stat-label">% Klien Puas</div>
+    </div>
+    <div class="stat-item reveal delay-3">
+      <div class="stat-num" data-count="48">0</div>
+      <div class="stat-label">Jam Turnaround (avg)</div>
+    </div>
+    <div class="stat-item reveal delay-4">
+      <div class="stat-num" data-count="4">0</div>
+      <div class="stat-label">K Resolusi Output</div>
+    </div>
+  </div>
+</section>
+
+<!-- PORTFOLIO -->
+<section id="portfolio">
+  <div class="section-label reveal">Portfolio</div>
+  <h2 class="section-title reveal delay-1">Karya Pilihan</h2>
+  <p class="section-sub reveal delay-2">Sebagian kecil dari proyek yang pernah dikerjakan.</p>
+  <div class="portfolio-grid reveal delay-2">
+    <div class="port-item tilt">
+      <div class="port-item-bg port-item-bg-1"></div>
+      <div class="port-3d-scene">🌐</div>
+      <div class="port-item-duration">0:45</div>
+      <div class="port-item-overlay">
+        <div class="port-item-title">Brand World — PT Visionary</div>
+        <div class="port-item-tag">Product Visualization</div>
+      </div>
+    </div>
+    <div class="port-item tilt">
+      <div class="port-item-bg port-item-bg-2"></div>
+      <div class="port-3d-scene">🦾</div>
+      <div class="port-item-duration">1:12</div>
+      <div class="port-item-overlay">
+        <div class="port-item-title">Robot Assembly Line</div>
+        <div class="port-item-tag">Character Animation</div>
+      </div>
+    </div>
+    <div class="port-item tilt">
+      <div class="port-item-bg port-item-bg-3"></div>
+      <div class="port-3d-scene">🏛️</div>
+      <div class="port-item-duration">2:00</div>
+      <div class="port-item-overlay">
+        <div class="port-item-title">Luxury Villa — Rendering</div>
+        <div class="port-item-tag">Architectural Viz</div>
+      </div>
+    </div>
+    <div class="port-item tilt">
+      <div class="port-item-bg port-item-bg-4"></div>
+      <div class="port-3d-scene">💎</div>
+      <div class="port-item-duration">0:30</div>
+      <div class="port-item-overlay">
+        <div class="port-item-title">Jewelry Showcase — Luminos</div>
+        <div class="port-item-tag">Product Viz</div>
+      </div>
+    </div>
+    <div class="port-item tilt">
+      <div class="port-item-bg port-item-bg-5"></div>
+      <div class="port-3d-scene">🚀</div>
+      <div class="port-item-duration">1:30</div>
+      <div class="port-item-overlay">
+        <div class="port-item-title">Launch Sequence — SpaceX Concept</div>
+        <div class="port-item-tag">Cinematic Scene</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIAL -->
+<section id="testimonial">
+  <div class="testi-bg"></div>
+  <div class="section-label reveal">Testimonial</div>
+  <h2 class="section-title reveal delay-1">Kata Mereka</h2>
+  <div class="testi-slider reveal delay-2">
+    <div class="testi-track" id="testi-track">
+      <div class="testi-card">
+        <div class="testi-text">"Hasil animasinya benar-benar di atas ekspektasi. Klien kami sampai minta video serupa untuk 3 produk lainnya. Proses cepat, komunikasi lancar, dan hasilnya sinematik banget!"</div>
+        <div class="testi-author">
+          <div class="testi-avatar">A</div>
+          <div><div class="testi-name">Aldi Firmansyah</div><div class="testi-role">Marketing Manager — PT Digital Nusantara</div></div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-text">"Kami order animasi 3D produk skincare 45 detik, harganya sangat reasonable dan kualitasnya setara agency mahal. Definitely rekomendasikan ke siapapun yang butuh visual premium!"</div>
+        <div class="testi-author">
+          <div class="testi-avatar">S</div>
+          <div><div class="testi-name">Sari Dewi</div><div class="testi-role">Founder — Glow Studio Beauty</div></div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-text">"Visualisasi arsitektur kita jadi jauh lebih mudah dipresentasikan ke klien. Render 3D-nya detail, lighting realistis, dan turnaround-nya under 48 jam. Luar biasa!"</div>
+        <div class="testi-author">
+          <div class="testi-avatar">R</div>
+          <div><div class="testi-name">Rizky Pratama</div><div class="testi-role">Principal Architect — RP Studio</div></div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-text">"Harga transparan dan dihitung per detik itu jujur banget. Tidak ada yang disembunyikan. Project robot animation kita selesai tepat waktu dan hasilnya memuaskan sekali."</div>
+        <div class="testi-author">
+          <div class="testi-avatar">D</div>
+          <div><div class="testi-name">Dinda Kusuma</div><div class="testi-role">Creative Director — Techvision ID</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="testi-nav">
+      <button class="testi-btn" id="testi-prev">←</button>
+      <button class="testi-btn" id="testi-next">→</button>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq">
+  <div class="section-label reveal">FAQ</div>
+  <h2 class="section-title reveal delay-1">Pertanyaan<br>yang Sering Muncul</h2>
+  <div class="faq-list reveal delay-2">
+    <div class="faq-item">
+      <div class="faq-q">Berapa lama waktu pengerjaan? <div class="faq-icon">+</div></div>
+      <div class="faq-a">Untuk video di bawah 1 menit, rata-rata kami selesaikan dalam 24–48 jam setelah brief disetujui. Video yang lebih panjang atau kompleks bisa membutuhkan 3–5 hari kerja.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Format file apa yang diterima output-nya? <div class="faq-icon">+</div></div>
+      <div class="faq-a">Output standar adalah MP4 (H.264/H.265) dan MOV dalam resolusi 4K (3840×2160). Kami juga bisa menyesuaikan ke resolusi dan format lain atas permintaan.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Apakah ada revisi gratis? <div class="faq-icon">+</div></div>
+      <div class="faq-a">Ya! Setiap project sudah termasuk 2x revisi minor (warna, teks, timing kecil). Untuk perubahan besar seperti ganti scene atau aset, ada biaya tambahan yang disepakati bersama.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Bagaimana cara membayar? <div class="faq-icon">+</div></div>
+      <div class="faq-a">Pembayaran via transfer bank (BCA/Mandiri/BNI) atau e-wallet (GoPay/OVO/Dana). Sistem DP 50% di awal, sisa 50% setelah approve preview final.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Apakah bisa request gaya animasi tertentu? <div class="faq-icon">+</div></div>
+      <div class="faq-a">Tentu saja! Kami bisa menyesuaikan dengan referensi yang kamu berikan—dari minimalist modern, cinematic dark, colorful vibrant, hingga futuristic tech style.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Apakah bisa untuk kebutuhan komersial / iklan? <div class="faq-icon">+</div></div>
+      <div class="faq-a">Ya, semua output diberikan hak komersial penuh kepada klien setelah pembayaran lunas. Kamu bebas menggunakannya untuk iklan, konten media sosial, presentasi, dll.</div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="cta">
+  <div class="cta-bg"></div>
+  <div class="cta-bg-lines"></div>
+  <div class="cta-inner">
+    <div class="section-label reveal" style="justify-content:center;">Mulai Sekarang</div>
+    <h2 class="cta-h2 reveal delay-1">SIAP<br><span class="grad">BERGERAK?</span></h2>
+    <p class="cta-sub reveal delay-2">Jadikan ide animasimu kenyataan. Konsultasi gratis, harga transparan, hasil premium.</p>
+    <div class="cta-btns reveal delay-3">
+      <a href="https://wa.me/6281234567890?text=Halo!%20Saya%20ingin%20order%20video%20animasi%203D" class="btn-primary magnetic" target="_blank"><span>💬 Chat WhatsApp</span></a>
+      <a href="mailto:hello@vizion3d.id" class="btn-outline magnetic">📧 Kirim Email</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">VIZION3D</div>
+  <div class="footer-links">
+    <a href="#services">Layanan</a>
+    <a href="#pricing">Harga</a>
+    <a href="#portfolio">Portfolio</a>
+    <a href="#process">Proses</a>
+    <a href="#faq">FAQ</a>
+  </div>
+  <div class="footer-copy">© 2025 Vizion3D. Dibuat dengan ❤️ & AI</div>
+</footer>
+
+<script>
+/* ─── LOADER ──────────────────────────────────────────── */
+const loaderBar = document.getElementById('loader-bar');
+const loader = document.getElementById('loader');
+let progress = 0;
+const loadInterval = setInterval(() => {
+  progress += Math.random() * 18;
+  if (progress >= 100) { progress = 100; clearInterval(loadInterval); setTimeout(() => { loader.classList.add('hide'); }, 300); }
+  loaderBar.style.width = progress + '%';
+}, 60);
+
+/* ─── CURSOR ──────────────────────────────────────────── */
+const dot = document.getElementById('cursor-dot');
+const ring = document.getElementById('cursor-ring');
+let mouseX = 0, mouseY = 0, ringX = 0, ringY = 0;
+document.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; dot.style.left = mouseX + 'px'; dot.style.top = mouseY + 'px'; });
+(function animateRing() {
+  ringX += (mouseX - ringX) * 0.12;
+  ringY += (mouseY - ringY) * 0.12;
+  ring.style.left = ringX + 'px'; ring.style.top = ringY + 'px';
+  requestAnimationFrame(animateRing);
+})();
+document.querySelectorAll('a,button,.service-card,.port-item,.stat-item,.faq-item,.testi-card,.calc-field input').forEach(el => {
+  el.addEventListener('mouseenter', () => document.body.classList.add('cursor-hover'));
+  el.addEventListener('mouseleave', () => document.body.classList.remove('cursor-hover'));
+});
+document.addEventListener('mousedown', () => document.body.classList.add('cursor-click'));
+document.addEventListener('mouseup', () => document.body.classList.remove('cursor-click'));
+
+/* ─── NAV SCROLL ──────────────────────────────────────── */
+const navbar = document.getElementById('navbar');
+window.addEventListener('scroll', () => { navbar.classList.toggle('scrolled', window.scrollY > 60); });
+
+/* ─── HAMBURGER ───────────────────────────────────────── */
+const hamburger = document.getElementById('hamburger');
+const mobileMenu = document.getElementById('mobile-menu');
+hamburger.addEventListener('click', () => {
+  mobileMenu.classList.toggle('open');
+  const spans = hamburger.querySelectorAll('span');
+  if (mobileMenu.classList.contains('open')) {
+    spans[0].style.transform = 'rotate(45deg) translate(5px,5px)';
+    spans[1].style.opacity = '0';
+    spans[2].style.transform = 'rotate(-45deg) translate(5px,-5px)';
+  } else {
+    spans.forEach(s => { s.style.transform = ''; s.style.opacity = ''; });
+  }
+});
+mobileMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => {
+  mobileMenu.classList.remove('open');
+  hamburger.querySelectorAll('span').forEach(s => { s.style.transform=''; s.style.opacity=''; });
+}));
+
+/* ─── SCROLL REVEAL ───────────────────────────────────── */
+const revealEls = document.querySelectorAll('.reveal,.reveal-left,.reveal-right');
+const revealObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); } });
+}, { threshold: 0.12 });
+revealEls.forEach(el => revealObs.observe(el));
+
+/* ─── COUNTER ANIMATION ───────────────────────────────── */
+function animateCount(el, target, duration=1500) {
+  let start = 0; const step = (ts) => {
+    if (!start) start = ts;
+    const prog = Math.min((ts - start) / duration, 1);
+    el.textContent = Math.floor(prog * target);
+    if (prog < 1) requestAnimationFrame(step); else el.textContent = target;
+  };
+  requestAnimationFrame(step);
+}
+const countObs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { const t = +e.target.dataset.count; animateCount(e.target, t); countObs.unobserve(e.target); } });
+}, { threshold: 0.5 });
+document.querySelectorAll('[data-count]').forEach(el => countObs.observe(el));
+
+/* ─── CALCULATOR ──────────────────────────────────────── */
+function calcPrice() {
+  const m = Math.max(0, parseInt(document.getElementById('calc-min').value) || 0);
+  const s = Math.max(0, Math.min(59, parseInt(document.getElementById('calc-sec').value) || 0));
+  const totalSec = m * 60 + s;
+  const base = 150000;
+  const perSec = 2500;
+  let price, detail;
+  if (totalSec <= 60) {
+    price = base;
+    detail = `Durasi: ${totalSec} detik<br>Base: Rp150.000<br>Tambahan: —`;
+  } else {
+    const extra = totalSec - 60;
+    price = base + extra * perSec;
+    detail = `Durasi: ${totalSec} detik<br>Base: Rp150.000<br>Tambahan: ${extra}dtk × Rp2.500 = Rp${(extra*2500).toLocaleString('id-ID')}`;
+  }
+  document.getElementById('calc-output').textContent = 'Rp' + price.toLocaleString('id-ID');
+  document.getElementById('calc-detail').innerHTML = detail;
+}
+document.getElementById('calc-min').addEventListener('input', calcPrice);
+document.getElementById('calc-sec').addEventListener('input', calcPrice);
+
+/* ─── TESTIMONIAL SLIDER ──────────────────────────────── */
+const track = document.getElementById('testi-track');
+let currentSlide = 0;
+const cards = track.querySelectorAll('.testi-card');
+const totalSlides = cards.length - 1;
+function slideTo(idx) {
+  currentSlide = Math.max(0, Math.min(idx, totalSlides - 1));
+  const width = cards[0].offsetWidth + 24;
+  track.style.transform = `translateX(-${currentSlide * width}px)`;
+  track.style.transition = 'transform 0.5s cubic-bezier(.16,1,.3,1)';
+}
+document.getElementById('testi-next').addEventListener('click', () => slideTo(currentSlide + 1));
+document.getElementById('testi-prev').addEventListener('click', () => slideTo(currentSlide - 1));
+window.addEventListener('resize', () => slideTo(currentSlide));
+
+/* ─── FAQ ACCORDION ───────────────────────────────────── */
+document.querySelectorAll('.faq-item').forEach(item => {
+  item.querySelector('.faq-q').addEventListener('click', () => {
+    const isOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+    if (!isOpen) item.classList.add('open');
+  });
+});
+
+/* ─── PARTICLES ───────────────────────────────────────── */
+const particleContainer = document.getElementById('particles');
+function createParticle() {
+  const p = document.createElement('div');
+  p.className = 'particle';
+  const size = Math.random() * 4 + 2;
+  const left = Math.random() * 100;
+  const duration = Math.random() * 15 + 10;
+  const delay = Math.random() * 10;
+  const drift = (Math.random() - 0.5) * 80;
+  p.style.cssText = `width:${size}px;height:${size}px;left:${left}%;--drift:${drift}px;animation-duration:${duration}s;animation-delay:${delay}s;`;
+  particleContainer.appendChild(p);
+  setTimeout(() => p.remove(), (duration + delay) * 1000);
+}
+setInterval(createParticle, 800);
+for(let i=0;i<8;i++) setTimeout(createParticle, i*300);
+
+/* ─── TILT EFFECT ─────────────────────────────────────── */
+document.querySelectorAll('.tilt').forEach(el => {
+  el.addEventListener('mousemove', e => {
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - 0.5;
+    const y = (e.clientY - r.top) / r.height - 0.5;
+    el.style.transform = `perspective(600px) rotateY(${x*10}deg) rotateX(${-y*8}deg) translateZ(6px)`;
+  });
+  el.addEventListener('mouseleave', () => { el.style.transform = ''; });
+});
+
+/* ─── MAGNETIC BUTTONS ────────────────────────────────── */
+document.querySelectorAll('.magnetic').forEach(el => {
+  el.addEventListener('mousemove', e => {
+    const r = el.getBoundingClientRect();
+    const x = e.clientX - r.left - r.width/2;
+    const y = e.clientY - r.top - r.height/2;
+    el.style.transform = `translate(${x*0.25}px,${y*0.25}px)`;
+  });
+  el.addEventListener('mouseleave', () => { el.style.transform = ''; });
+});
+
+/* ─── SMOOTH SCROLL ───────────────────────────────────── */
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) { e.preventDefault(); target.scrollIntoView({ behavior:'smooth', block:'start' }); }
+  });
+});
+</script>
+</body>
+</html>
